@@ -22,18 +22,25 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const submit = (e: React.FormEvent) => {
+  const DEMO_PW_MAP: Record<string, string> = {
+    "student@workverse.vn": "student123",
+    "employer@workverse.vn": "employer123",
+    "admin@workverse.vn": "admin123",
+  };
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const res = login(email.trim(), password);
+    const res = await login(email.trim(), password);
     if (!res.ok) return setError(res.error);
     navigate({ to: "/" });
   };
 
-  const quickLogin = (acc: typeof DEMO_ACCOUNTS[number]) => {
+  const quickLogin = async (acc: typeof DEMO_ACCOUNTS[number]) => {
+    const pw = DEMO_PW_MAP[acc.email] ?? "";
     setEmail(acc.email);
-    setPassword(acc.password);
-    const res = login(acc.email, acc.password);
+    setPassword(pw);
+    const res = await login(acc.email, pw);
     if (res.ok) navigate({ to: "/" });
   };
 
@@ -85,7 +92,7 @@ function LoginPage() {
                   </div>
                   <div className="flex-1">
                     <div className="text-sm font-semibold">{ROLE_LABEL[acc.role]} · {acc.name}</div>
-                    <div className="text-xs text-muted-foreground">{acc.email} / {acc.password}</div>
+                    <div className="text-xs text-muted-foreground">{acc.email} / {DEMO_PW_MAP[acc.email]}</div>
                   </div>
                   <span className="text-xs text-primary">Đăng nhập →</span>
                 </button>

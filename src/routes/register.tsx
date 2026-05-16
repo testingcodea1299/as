@@ -19,10 +19,10 @@ function RegisterPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "student" as Role });
   const [error, setError] = useState<string | null>(null);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const res = register({ ...form, email: form.email.trim() });
+    const res = await register({ ...form, email: form.email.trim() });
     if (!res.ok) return setError(res.error);
     navigate({ to: "/" });
   };

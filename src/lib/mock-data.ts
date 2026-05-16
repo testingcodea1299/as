@@ -8,7 +8,12 @@ export type Job = {
   salary: string;
   skills: string[];
   postedAt: string;
+  lat?: number;
+  lng?: number;
 };
+
+// Center: District 1 HCMC (10.7769, 106.7009)
+export const CENTER: [number, number] = [10.7769, 106.7009];
 
 export const MOCK_JOBS: Job[] = [
   {
@@ -21,6 +26,8 @@ export const MOCK_JOBS: Job[] = [
     salary: "12-18 triệu",
     skills: ["React", "Node.js", "PostgreSQL"],
     postedAt: "2 giờ trước",
+    lat: 10.7820,
+    lng: 106.7050,
   },
   {
     id: "j2",
@@ -32,28 +39,34 @@ export const MOCK_JOBS: Job[] = [
     salary: "28k/giờ",
     skills: ["F&B", "Giao tiếp"],
     postedAt: "5 giờ trước",
+    lat: 10.7710,
+    lng: 106.6950,
   },
   {
     id: "j3",
     title: "Thiết kế UI/UX Landing Page",
     type: "Freelance",
     company: "Startup ABC",
-    location: "Remote",
+    location: "Q.3, TP.HCM",
     distanceKm: 1.6,
     salary: "5 triệu/dự án",
     skills: ["Figma", "UI/UX", "Webflow"],
     postedAt: "1 ngày trước",
+    lat: 10.7850,
+    lng: 106.6880,
   },
   {
     id: "j4",
     title: "Viết Content Marketing",
     type: "Freelance",
     company: "Agency XYZ",
-    location: "Remote",
+    location: "Q.Bình Thạnh, TP.HCM",
     distanceKm: 1.9,
     salary: "300k/bài",
     skills: ["Copywriting", "SEO"],
     postedAt: "3 giờ trước",
+    lat: 10.7680,
+    lng: 106.7110,
   },
 ];
 

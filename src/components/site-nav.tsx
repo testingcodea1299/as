@@ -1,10 +1,12 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Briefcase, Bot, Wallet, ShieldCheck, Sparkles, LogIn, LogOut, UserPlus, Crown, Plus } from "lucide-react";
+import { Briefcase, Bot, Wallet, ShieldCheck, Sparkles, LogIn, LogOut, UserPlus, Crown, Plus, User } from "lucide-react";
 import { useAuth, ROLE_LABEL, PLAN_LABEL, ROLE_LINKS } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notification-bell";
 
-const ICONS = { Briefcase, Bot, Wallet, ShieldCheck, Sparkles, Plus, Crown } as const;
+const ICONS = { Briefcase, Bot, Wallet, ShieldCheck, Sparkles, Plus, Crown, User } as const;
 
 const PUBLIC_LINKS = [
   { to: "/", label: "Trang chủ", icon: "Sparkles" },
@@ -45,10 +47,12 @@ export function SiteNav() {
             );
           })}
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          {user && <NotificationBell />}
           {user ? (
             <>
-              <div className="hidden text-right sm:block">
+              <Link to="/profile" className="hidden text-right sm:block hover:opacity-80">
                 <div className="text-sm font-medium leading-tight">{user.name}</div>
                 <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground leading-tight">
                   {ROLE_LABEL[user.role]}
@@ -56,7 +60,10 @@ export function SiteNav() {
                     {PLAN_LABEL[user.plan]}
                   </Badge>
                 </div>
-              </div>
+              </Link>
+              <Button asChild size="sm" variant="ghost" className="sm:hidden">
+                <Link to="/profile"><User /></Link>
+              </Button>
               <Button size="sm" variant="outline" onClick={() => { logout(); navigate({ to: "/login" }); }}>
                 <LogOut /> <span className="hidden sm:inline">Đăng xuất</span>
               </Button>
