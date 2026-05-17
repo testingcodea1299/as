@@ -76,7 +76,7 @@ function ChatPage() {
       <main className="mx-auto max-w-4xl px-4 py-8">
         <h1 className="text-2xl font-bold">AI Chatbot · Gemini Live</h1>
         <p className="text-sm text-muted-foreground">
-          Powered by Lovable AI Gateway · Gemini 2.5 Flash{" "}
+          Gemini 2.5 Flash{" "}
           {user?.plan === "free" && <span className="text-amber-600">(Free: giới hạn cơ bản)</span>}
           {user && user.plan !== "free" && <span className="text-primary">· Gói {user.plan.toUpperCase()} ✨</span>}
         </p>
