@@ -11,31 +11,58 @@ const SYSTEM_PROMPTS: Record<string, string> = {
     "Bạn là trợ lý quản trị WorkVerse.vn. Trả lời tiếng Việt, markdown, gọn. Hỗ trợ báo cáo 24h, IDS alerts, escrow overview, dispute SLA 72h, audit logs giữ 7 năm, quản lý user. Khi không có dữ liệu thật, đưa ra số liệu mô phỏng hợp lý kèm chú thích (mock).",
 };
 
+type GeminiContent = {
+  role: "user" | "model";
+  parts: { text: string }[];
+};
+
 export const chatCompletion = createServerFn({ method: "POST" })
   .inputValidator((d: { role: "career" | "recruiter" | "admin"; messages: ChatMessage[] }) => d)
   .handler(async ({ data }) => {
-    const apiKey = process.env.LOVABLE_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return { content: "⚠️ Chưa cấu hình LOVABLE_API_KEY. Vui lòng bật Lovable AI." };
+      return { content: "⚠️ Chưa cấu hình GEMINI_API_KEY. Vui lòng thêm biến môi trường trong Cloudflare." };
     }
+
     const sys = SYSTEM_PROMPTS[data.role] ?? SYSTEM_PROMPTS.career;
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+
+    // Gemini dùng role "user" / "model" thay vì "user" / "assistant"
+    // và không nhận role "system" trong messages — system đưa vào systemInstruction
+    const contents: GeminiContent[] = data.messages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+    const res = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "system", content: sys }, ...data.messages],
+        systemInstruction: { parts: [{ text: sys }] },
+        contents,
+        generationConfig: {
+          maxOutputTokens: 1024,
+          temperature: 0.7,
+        },
       }),
     });
+
     if (!res.ok) {
       const txt = await res.text();
       if (res.status === 429) return { content: "⏳ Đang quá tải, thử lại sau ít giây." };
-      if (res.status === 402) return { content: "💳 Hết credit AI, vui lòng nạp thêm trong Workspace." };
+      if (res.status === 403) return { content: "🔑 API key không hợp lệ hoặc chưa bật Gemini API." };
       return { content: `Lỗi AI (${res.status}): ${txt.slice(0, 200)}` };
     }
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    return { content: json.choices?.[0]?.message?.content ?? "(không có phản hồi)" };
+
+    const json = (await res.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+
+    const text =
+      json.candidates?.[0]?.content?.parts?.[0]?.text ?? "(không có phản hồi)";
+
+    return { content: text };
   });
