@@ -1,5 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { SiteNav } from "@/components/site-nav";
+import { ApplyDialog } from "@/components/apply-dialog";
+import { useApplications, APP_STATUS_LABEL } from "@/lib/applications-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +23,9 @@ function JobDetailPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const job = all.find((j) => j.id === jobId);
+  const [applyOpen, setApplyOpen] = useState(false);
+  const { hasApplied, items } = useApplications(user?.email);
+  const myApp = job ? items.find((a) => a.jobId === job.id) : undefined;
 
   if (!job) {
     return (
@@ -35,16 +41,24 @@ function JobDetailPage() {
 
   const apply = () => {
     if (!user) {
-      toast.error("Vui lòng đăng nhập để ứng tuyển");
-      navigate({ to: "/login" });
+      toast.message("Bạn cần đăng nhập / đăng ký để ứng tuyển", {
+        description: "Chuyển tới trang đăng ký…",
+        action: { label: "Đăng nhập", onClick: () => navigate({ to: "/login" }) },
+      });
+      navigate({ to: "/register" });
       return;
     }
-    if (user.role !== "student") {
-      toast.error("Chỉ tài khoản sinh viên mới ứng tuyển được");
+    if (user.role === "employer") {
+      toast.error("Tài khoản Nhà tuyển dụng không thể ứng tuyển. Hãy dùng tài khoản Ứng viên.");
       return;
     }
-    toast.success("Đã gửi đơn ứng tuyển! NTD sẽ phản hồi trong 3-5 ngày.");
-    pushNotification({ type: "success", title: "Đã ứng tuyển", description: `${job.title} · ${job.company}`, link: `/jobs/${job.id}` });
+    if (hasApplied(job!.id)) {
+      toast.message("Bạn đã ứng tuyển job này. Xem trạng thái trong Hồ sơ.", {
+        action: { label: "Xem Hồ sơ", onClick: () => navigate({ to: "/profile" }) },
+      });
+      return;
+    }
+    setApplyOpen(true);
   };
 
   return (
@@ -67,34 +81,35 @@ function JobDetailPage() {
 
             <Card className="mt-6">
               <CardHeader><CardTitle className="text-base">Mô tả công việc</CardTitle></CardHeader>
-              <CardContent className="space-y-3 text-sm leading-relaxed">
-                <p>
-                  {job.company} đang tìm kiếm <b>{job.title}</b> làm việc tại {job.location}.
-                  Đây là cơ hội tốt cho sinh viên muốn tích luỹ kinh nghiệm thực tế và xây dựng portfolio chuyên nghiệp.
+              <CardContent className="space-y-4 text-sm leading-relaxed">
+                <p className="text-muted-foreground">
+                  {job.description ?? `${job.company} đang tìm kiếm ${job.title} làm việc tại ${job.location}.`}
                 </p>
                 <div>
-                  <h3 className="mb-1 font-semibold">Trách nhiệm chính</h3>
+                  <h3 className="mb-1.5 font-semibold">Trách nhiệm chính</h3>
                   <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                    <li>Phối hợp với team thực hiện công việc theo yêu cầu dự án</li>
-                    <li>Đảm bảo deadline và chất lượng đầu ra</li>
-                    <li>Tham gia review, đề xuất cải tiến quy trình</li>
+                    {(job.responsibilities ?? [
+                      "Phối hợp với team thực hiện công việc theo yêu cầu dự án",
+                      "Đảm bảo deadline và chất lượng đầu ra",
+                    ]).map((x) => <li key={x}>{x}</li>)}
                   </ul>
                 </div>
                 <div>
-                  <h3 className="mb-1 font-semibold">Yêu cầu</h3>
+                  <h3 className="mb-1.5 font-semibold">Yêu cầu ứng viên</h3>
                   <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                    <li>Thành thạo: {job.skills.join(", ")}</li>
-                    <li>Tinh thần học hỏi, giao tiếp tốt</li>
-                    <li>Ưu tiên SV năm 3-4 hoặc đã có 1 dự án thực tế</li>
+                    {(job.requirements ?? [`Thành thạo: ${job.skills.join(", ")}`, "Tinh thần học hỏi, giao tiếp tốt"]).map((x) => <li key={x}>{x}</li>)}
                   </ul>
                 </div>
                 <div>
-                  <h3 className="mb-1 font-semibold">Quyền lợi</h3>
+                  <h3 className="mb-1.5 font-semibold">Quyền lợi</h3>
                   <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                    <li>Mức {job.type === "Freelance" ? "thù lao" : "lương"}: {job.salary}</li>
-                    <li>Mentor 1-1 trong 3 tháng đầu</li>
-                    <li>Thanh toán an toàn qua Escrow của WorkVerse</li>
+                    {(job.benefits ?? [`Mức ${job.type === "Freelance" ? "thù lao" : "lương"}: ${job.salary}`, "Thanh toán an toàn qua Escrow WorkVerse"]).map((x) => <li key={x}>{x}</li>)}
                   </ul>
+                </div>
+                <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:grid-cols-2">
+                  {job.workingHours && (<div><div className="text-xs font-medium text-muted-foreground">Thời gian làm việc</div><div>{job.workingHours}</div></div>)}
+                  {job.deadline && (<div><div className="text-xs font-medium text-muted-foreground">Hạn nộp hồ sơ</div><div>{job.deadline}</div></div>)}
+                  {job.contactEmail && (<div className="sm:col-span-2"><div className="text-xs font-medium text-muted-foreground">Liên hệ</div><div>{job.contactEmail}</div></div>)}
                 </div>
               </CardContent>
             </Card>
@@ -104,7 +119,15 @@ function JobDetailPage() {
             <Card>
               <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Banknote className="h-4 w-4 text-primary" /> {job.salary}</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full" onClick={apply}><CheckCircle2 /> Ứng tuyển ngay</Button>
+                {myApp ? (
+                  <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+                    <div className="font-medium text-primary">Đã ứng tuyển</div>
+                    <div className="text-xs text-muted-foreground">Trạng thái: {APP_STATUS_LABEL[myApp.status]}</div>
+                    <Button asChild size="sm" variant="link" className="h-auto p-0"><Link to="/profile">Xem tiến trình →</Link></Button>
+                  </div>
+                ) : (
+                  <Button className="w-full" onClick={apply}><CheckCircle2 /> Ứng tuyển ngay</Button>
+                )}
                 <Button asChild variant="outline" className="w-full"><Link to="/chatbot"><Bot /> Hỏi AI về job này</Link></Button>
                 <div className="flex flex-wrap gap-1.5 pt-2">
                   {job.skills.map((s) => <Badge key={s} variant="outline">{s}</Badge>)}
@@ -120,6 +143,7 @@ function JobDetailPage() {
           </aside>
         </div>
       </main>
+      {job && <ApplyDialog open={applyOpen} onOpenChange={setApplyOpen} job={{ id: job.id, title: job.title, company: job.company }} />}
     </div>
   );
 }

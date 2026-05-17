@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth, ROLE_LABEL, PLAN_LABEL } from "@/lib/auth";
 import { useJobs } from "@/lib/jobs-store";
+import { useApplications, APP_STATUS_LABEL, APP_STATUS_VARIANT } from "@/lib/applications-store";
 import { toast } from "sonner";
-import { User, Mail, Briefcase, Crown, LogOut, Save } from "lucide-react";
+import { User, Mail, Briefcase, Crown, LogOut, Save, FileText, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
   component: ProfilePage,
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/profile")({
 function ProfilePage() {
   const { user, logout } = useAuth();
   const { userJobs, removeJob } = useJobs();
+  const { items: myApplications } = useApplications(user?.email);
   const navigate = useNavigate();
   const [bio, setBio] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("workverse.bio") || "" : ""));
   const [skills, setSkills] = useState(() => (typeof window !== "undefined" ? localStorage.getItem("workverse.skills") || "" : ""));
@@ -67,6 +69,46 @@ function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {user.role !== "employer" && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="text-base">
+                <FileText className="mr-2 inline h-4 w-4" /> Đơn ứng tuyển của tôi ({myApplications.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {myApplications.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Bạn chưa gửi đơn nào. <Link to="/jobs" className="text-primary underline">Khám phá việc làm →</Link>
+                </p>
+              )}
+              {myApplications.map((a) => (
+                <div key={a.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <Link to="/jobs/$jobId" params={{ jobId: a.jobId }} className="truncate text-sm font-medium hover:text-primary hover:underline">
+                        {a.jobTitle}
+                      </Link>
+                      <Badge variant={APP_STATUS_VARIANT[a.status]}>{APP_STATUS_LABEL[a.status]}</Badge>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span>{a.company}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Gửi {new Date(a.createdAt).toLocaleString("vi-VN")}
+                      </span>
+                      {a.cvName && <span className="inline-flex items-center gap-1"><FileText className="h-3 w-3" /> {a.cvName}</span>}
+                    </div>
+                  </div>
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/jobs/$jobId" params={{ jobId: a.jobId }}>Xem job</Link>
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <Card>

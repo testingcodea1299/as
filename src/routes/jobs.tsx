@@ -113,6 +113,10 @@ function JobsPage() {
                       <div className="flex flex-wrap gap-1.5 pt-2">
                         {j.skills.map((s) => <Badge key={s} variant="outline">{s}</Badge>)}
                       </div>
+                      <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                        <span className="text-xs text-muted-foreground">Bấm để xem chi tiết & ứng tuyển</span>
+                        <span className="text-sm font-medium text-primary">Xem chi tiết →</span>
+                      </div>
                     </CardContent>
                   </Card>
                 </Link>
