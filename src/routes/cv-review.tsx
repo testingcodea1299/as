@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { SiteNav } from "@/components/site-nav";
@@ -9,14 +10,79 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
-// Import từ chat.functions — cùng file với chatCompletion (đã hoạt động)
-import { reviewCV, type CVReviewResult } from "@/lib/chat.functions";
 import { toast } from "sonner";
 import {
-  Crown, Lock, Loader2, Bot, CheckCircle2, AlertCircle,
+  Crown, Lock, Loader2, CheckCircle2, AlertCircle,
   ChevronDown, ChevronUp, FileText, Lightbulb, Target, Sparkles,
   RefreshCw, Copy, ArrowLeft,
 } from "lucide-react";
+
+// ── Server function định nghĩa thẳng trong route file ────────────────────────
+
+export type CVReviewResult = {
+  score: number;
+  summary: string;
+  strengths: string[];
+  weaknesses: string[];
+  sections: {
+    name: string;
+    rating: "tốt" | "ổn" | "yếu";
+    feedback: string;
+    rewritten?: string;
+  }[];
+  keywords: string[];
+  overallTips: string[];
+};
+
+const CV_SYSTEM = `Bạn là chuyên gia tuyển dụng và coach CV tại Việt Nam với 10 năm kinh nghiệm.
+Phân tích CV và trả về JSON THUẦN TÚY (không markdown backtick, không text thừa) theo schema:
+{"score":<1-10>,"summary":"<1 câu>","strengths":["..."],"weaknesses":["..."],"sections":[{"name":"...","rating":"tốt"|"ổn"|"yếu","feedback":"...","rewritten":"<chỉ khi ổn/yếu>"}],"keywords":["<ATS từ khoá>"],"overallTips":["..."]}
+Mục phân tích: Thông tin liên hệ, Mục tiêu, Học vấn, Kinh nghiệm, Kỹ năng, Dự án, Ngoại khoá.
+CHỈ trả JSON.`;
+
+export const reviewCV = createServerFn({ method: "POST" })
+  .inputValidator((d: { cvText: string; jobTarget?: string }) => d)
+  .handler(async ({ data }) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return { ok: false as const, error: "Chưa cấu hình GEMINI_API_KEY trong Cloudflare." };
+
+    const prompt = data.jobTarget
+      ? `CV:\n\n${data.cvText}\n\nVị trí mục tiêu: ${data.jobTarget}`
+      : `CV:\n\n${data.cvText}`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: CV_SYSTEM }] },
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 2048, temperature: 0.3 },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      if (res.status === 429) return { ok: false as const, error: "AI đang quá tải, thử lại sau." };
+      if (res.status === 403) return { ok: false as const, error: "API key không hợp lệ." };
+      return { ok: false as const, error: `Lỗi API (${res.status})` };
+    }
+
+    const json = (await res.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+    const raw = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+    try {
+      const result = JSON.parse(raw.replace(/```json|```/g, "").trim()) as CVReviewResult;
+      return { ok: true as const, result };
+    } catch {
+      return { ok: false as const, error: "AI trả về định dạng không hợp lệ. Thử lại." };
+    }
+  });
+
+// ── Route ─────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/cv-review")({
   component: CVReviewPage,
@@ -26,23 +92,17 @@ export const Route = createFileRoute("/cv-review")({
 // ── Score Ring ────────────────────────────────────────────────────────────────
 
 function ScoreRing({ score }: { score: number }) {
-  const r = 40;
-  const circ = 2 * Math.PI * r;
-  const dash = ((score / 10) * 100 / 100) * circ;
+  const r = 40, circ = 2 * Math.PI * r;
+  const dash = (score / 10) * circ;
   const color = score >= 8 ? "#639922" : score >= 6 ? "#EF9F27" : "#E24B4A";
-
   return (
-    <div className="relative flex flex-col items-center gap-2">
+    <div className="flex flex-col items-center gap-2">
       <div className="relative w-[100px] h-[100px]">
         <svg width="100" height="100" className="-rotate-90">
           <circle cx="50" cy="50" r={r} fill="none" stroke="currentColor" strokeWidth="8" className="text-border" />
-          <circle
-            cx="50" cy="50" r={r} fill="none"
-            stroke={color} strokeWidth="8"
-            strokeDasharray={`${dash} ${circ}`}
-            strokeLinecap="round"
-            style={{ transition: "stroke-dasharray 0.8s ease" }}
-          />
+          <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="8"
+            strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+            style={{ transition: "stroke-dasharray 0.8s ease" }} />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="text-2xl font-bold" style={{ color }}>{score}</span>
@@ -68,26 +128,22 @@ function SectionCard({ s }: { s: CVReviewResult["sections"][0] }) {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const badgeClass =
-    s.rating === "tốt" ? "bg-green-100 text-green-700 border-green-200" :
-    s.rating === "ổn"  ? "bg-amber-100 text-amber-700 border-amber-200" :
-    "bg-red-100 text-red-700 border-red-200";
+  const cls = s.rating === "tốt" ? "bg-green-100 text-green-700 border-green-200"
+    : s.rating === "ổn" ? "bg-amber-100 text-amber-700 border-amber-200"
+    : "bg-red-100 text-red-700 border-red-200";
 
   return (
     <div className="rounded-xl border border-border overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors text-left"
-      >
+      <button onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors text-left">
         <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${badgeClass}`}>
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${cls}`}>
             {s.rating === "tốt" ? "✓ Tốt" : s.rating === "ổn" ? "~ Ổn" : "✗ Yếu"}
           </span>
           <span className="font-medium text-sm">{s.name}</span>
         </div>
         {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
       </button>
-
       {open && (
         <div className="border-t border-border px-4 py-4 space-y-3">
           <p className="text-sm text-muted-foreground">{s.feedback}</p>
@@ -97,10 +153,8 @@ function SectionCard({ s }: { s: CVReviewResult["sections"][0] }) {
                 <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
                   <Sparkles className="h-3.5 w-3.5" /> Gợi ý cải thiện
                 </span>
-                <button onClick={copy} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  {copied
-                    ? <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> Đã sao chép</>
-                    : <><Copy className="h-3.5 w-3.5" /> Sao chép</>}
+                <button onClick={copy} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                  {copied ? <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" />Đã sao chép</> : <><Copy className="h-3.5 w-3.5" />Sao chép</>}
                 </button>
               </div>
               <p className="text-sm whitespace-pre-wrap leading-relaxed">{s.rewritten}</p>
@@ -149,13 +203,12 @@ function ReviewResult({ result, onReset }: { result: CVReviewResult; onReset: ()
             <ul className="space-y-2">
               {result.strengths.map((s) => (
                 <li key={s} className="flex items-start gap-2 text-sm">
-                  <span className="text-green-600 flex-shrink-0 mt-0.5">✓</span> {s}
+                  <span className="text-green-600 flex-shrink-0">✓</span> {s}
                 </li>
               ))}
             </ul>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2 text-red-600">
@@ -166,7 +219,7 @@ function ReviewResult({ result, onReset }: { result: CVReviewResult; onReset: ()
             <ul className="space-y-2">
               {result.weaknesses.map((w) => (
                 <li key={w} className="flex items-start gap-2 text-sm">
-                  <span className="text-red-500 flex-shrink-0 mt-0.5">✗</span> {w}
+                  <span className="text-red-500 flex-shrink-0">✗</span> {w}
                 </li>
               ))}
             </ul>
@@ -194,7 +247,7 @@ function ReviewResult({ result, onReset }: { result: CVReviewResult; onReset: ()
             <ul className="space-y-2">
               {result.overallTips.map((t) => (
                 <li key={t} className="flex items-start gap-2 text-sm text-amber-800">
-                  <span className="flex-shrink-0 mt-0.5">💡</span> {t}
+                  <span className="flex-shrink-0">💡</span> {t}
                 </li>
               ))}
             </ul>
@@ -215,24 +268,21 @@ function CVForm({ onResult }: { onResult: (r: CVReviewResult) => void }) {
   const [cvText, setCvText] = useState("");
   const [jobTarget, setJobTarget] = useState("");
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState("");
+  const [step, setStep] = useState(0);
   const callReview = useServerFn(reviewCV);
 
-  const steps = ["Đang đọc CV...", "Phân tích từng mục...", "Đánh giá điểm mạnh & yếu...", "Viết gợi ý cải thiện...", "Hoàn thiện kết quả..."];
+  const steps = ["Đang đọc CV...", "Phân tích từng mục...", "Đánh giá điểm mạnh & yếu...", "Viết gợi ý cải thiện...", "Hoàn thiện..."];
 
   const submit = async () => {
-    if (cvText.trim().length < 50) { toast.error("CV quá ngắn — hãy dán đầy đủ nội dung CV"); return; }
-    setLoading(true);
-    let step = 0;
-    setProgress(steps[0]);
-    const interval = setInterval(() => { step = Math.min(step + 1, steps.length - 1); setProgress(steps[step]); }, 1800);
+    if (cvText.trim().length < 50) { toast.error("CV quá ngắn — hãy dán đầy đủ nội dung"); return; }
+    setLoading(true); setStep(0);
+    const iv = setInterval(() => setStep((s) => Math.min(s + 1, steps.length - 1)), 1800);
     try {
       const res = await callReview({ data: { cvText: cvText.trim(), jobTarget: jobTarget.trim() || undefined } });
-      clearInterval(interval);
       if (!res.ok) { toast.error(res.error); return; }
       onResult(res.result);
-    } catch { toast.error("Có lỗi xảy ra. Vui lòng thử lại."); }
-    finally { clearInterval(interval); setLoading(false); setProgress(""); }
+    } catch { toast.error("Có lỗi xảy ra. Thử lại."); }
+    finally { clearInterval(iv); setLoading(false); }
   };
 
   return (
@@ -242,11 +292,8 @@ function CVForm({ onResult }: { onResult: (r: CVReviewResult) => void }) {
           <Target className="h-3.5 w-3.5" /> Vị trí ứng tuyển mục tiêu
           <span className="text-xs text-muted-foreground font-normal">(tuỳ chọn)</span>
         </Label>
-        <Input
-          placeholder="Vd: Lập trình viên React, Marketing, Barista part-time..."
-          value={jobTarget}
-          onChange={(e) => setJobTarget(e.target.value)}
-        />
+        <Input placeholder="Vd: Frontend Developer, Marketing, Barista part-time..."
+          value={jobTarget} onChange={(e) => setJobTarget(e.target.value)} />
       </div>
 
       <div className="space-y-1.5">
@@ -254,13 +301,10 @@ function CVForm({ onResult }: { onResult: (r: CVReviewResult) => void }) {
           <FileText className="h-3.5 w-3.5" /> Nội dung CV
           <span className="text-xs text-muted-foreground font-normal">(dán từ Word / Google Docs)</span>
         </Label>
-        <Textarea
-          rows={14}
-          placeholder={`Dán toàn bộ nội dung CV vào đây. Ví dụ:\n\nNGUYỄN VĂN A\nnguyenvana@email.com | 0912345678\n\nMỤC TIÊU NGHỀ NGHIỆP\nSinh viên năm 4 CNTT tìm kiếm vị trí Frontend...\n\nHỌC VẤN\n2021-2025 | ĐH Bách Khoa | GPA 3.4\n\nKỸ NĂNG\nReact, TypeScript, Node.js...`}
-          value={cvText}
-          onChange={(e) => setCvText(e.target.value)}
-          className="font-mono text-xs resize-none"
-        />
+        <Textarea rows={14}
+          placeholder={"Dán toàn bộ nội dung CV vào đây.\n\nVí dụ:\nNGUYỄN VĂN A\nnguyenvana@email.com | 0912345678\n\nHỌC VẤN\n2021-2025 | ĐH Bách Khoa | GPA 3.4\n\nKỸ NĂNG\nReact, TypeScript, Node.js..."}
+          value={cvText} onChange={(e) => setCvText(e.target.value)}
+          className="font-mono text-xs resize-none" />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>{cvText.length} ký tự</span>
           <span className={cvText.length < 50 ? "text-red-400" : "text-green-600"}>
@@ -271,13 +315,10 @@ function CVForm({ onResult }: { onResult: (r: CVReviewResult) => void }) {
 
       <Button className="w-full h-11 text-base" onClick={submit} disabled={loading || cvText.trim().length < 50}>
         {loading
-          ? <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /><span className="text-sm">{progress}</span></div>
+          ? <><Loader2 className="h-4 w-4 animate-spin" /> {steps[step]}</>
           : <><Sparkles className="h-5 w-5" /> Phân tích CV bằng Gemini AI</>}
       </Button>
-
-      <p className="text-center text-xs text-muted-foreground">
-        Phân tích trong ~10-15 giây · Kết quả không lưu sau khi tải lại trang
-      </p>
+      <p className="text-center text-xs text-muted-foreground">Phân tích ~10-15 giây · Copy kết quả trước khi tải lại trang</p>
     </div>
   );
 }
@@ -321,20 +362,18 @@ function CVReviewPage() {
               <div>
                 <h2 className="text-lg font-semibold">Tính năng dành cho gói Pro</h2>
                 <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
-                  Nâng cấp Pro để AI phân tích CV chuyên sâu, chấm điểm từng mục và viết lại phần yếu cho bạn.
+                  Nâng cấp Pro để AI Gemini chấm điểm CV, phân tích từng mục và viết lại phần yếu.
                 </p>
               </div>
-              <div className="flex flex-wrap justify-center gap-3 text-sm text-muted-foreground">
+              <div className="flex flex-wrap justify-center gap-3 text-sm">
                 {["Chấm điểm 0–10", "Phân tích từng mục", "Gợi ý cải thiện", "Từ khoá ATS"].map((f) => (
-                  <span key={f} className="inline-flex items-center gap-1">
+                  <span key={f} className="inline-flex items-center gap-1 text-muted-foreground">
                     <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> {f}
                   </span>
                 ))}
               </div>
-              <Button asChild size="lg" className="mt-2">
-                <Link to="/pricing">
-                  <Crown className="h-4 w-4" /> Nâng cấp Pro — chỉ 20.000₫/tháng
-                </Link>
+              <Button asChild size="lg">
+                <Link to="/pricing"><Crown className="h-4 w-4" /> Nâng cấp Pro — 20.000₫/tháng</Link>
               </Button>
               {!user && (
                 <p className="text-xs text-muted-foreground">
@@ -347,30 +386,26 @@ function CVReviewPage() {
         ) : result ? (
           <ReviewResult result={result} onReset={() => setResult(null)} />
         ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="h-4 w-4" /> Nhập nội dung CV
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CVForm onResult={setResult} />
-            </CardContent>
-          </Card>
-        )}
-
-        {isPro && !result && (
-          <Card className="mt-4 border-dashed">
-            <CardContent className="pt-4 pb-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2">💡 Mẹo để có kết quả tốt nhất</p>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• Dán <strong>toàn bộ CV</strong> — càng đầy đủ AI phân tích càng chính xác</li>
-                <li>• Nhập <strong>vị trí mục tiêu</strong> để AI tập trung vào kỹ năng phù hợp</li>
-                <li>• Hỗ trợ CV tiếng Việt và tiếng Anh</li>
-                <li>• Copy phần "Gợi ý cải thiện" trước khi thoát trang</li>
-              </ul>
-            </CardContent>
-          </Card>
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4" /> Nhập nội dung CV
+                </CardTitle>
+              </CardHeader>
+              <CardContent><CVForm onResult={setResult} /></CardContent>
+            </Card>
+            <Card className="mt-4 border-dashed">
+              <CardContent className="pt-4 pb-4">
+                <p className="text-xs font-medium text-muted-foreground mb-2">💡 Mẹo để có kết quả tốt nhất</p>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  <li>• Dán <strong>toàn bộ CV</strong> — càng đầy đủ AI phân tích càng chính xác</li>
+                  <li>• Nhập <strong>vị trí mục tiêu</strong> để AI tập trung đúng kỹ năng</li>
+                  <li>• Hỗ trợ CV tiếng Việt và tiếng Anh</li>
+                </ul>
+              </CardContent>
+            </Card>
+          </>
         )}
       </main>
     </div>
