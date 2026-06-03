@@ -11,7 +11,7 @@ import { useAuth, ROLE_LABEL, PLAN_LABEL } from "@/lib/auth";
 import { useJobs } from "@/lib/jobs-store";
 import { useApplications, APP_STATUS_LABEL, APP_STATUS_VARIANT } from "@/lib/applications-store";
 import { toast } from "sonner";
-import { User, Mail, Briefcase, Crown, LogOut, Save, FileText, Clock } from "lucide-react";
+import { User, Mail, Briefcase, Crown, LogOut, Save, FileText, Clock, Calendar, Bot, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
   component: ProfilePage,
@@ -134,7 +134,7 @@ function ProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
-                {user.role === "employer" ? `Tin tuyển dụng đã đăng (${userJobs.length})` : "Hoạt động gần đây"}
+                {user.role === "employer" ? `Tin tuyển dụng đã đăng (${userJobs.length})` : "Tính năng nhanh"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -156,13 +156,33 @@ function ProfilePage() {
                   <Button asChild className="w-full" variant="outline"><Link to="/post-job">+ Đăng tin mới</Link></Button>
                 </>
               ) : (
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li>• Chào mừng {user.name} đến WorkVerse 👋</li>
-                  <li>• Tài khoản: <b>{ROLE_LABEL[user.role]}</b></li>
-                  <li>• Gói hiện tại: <b>{PLAN_LABEL[user.plan]}</b></li>
-                  <li>• Khám phá <Link to="/jobs" className="text-primary underline">việc làm trong 2km</Link></li>
-                  <li>• Hỏi <Link to="/chatbot" className="text-primary underline">AI Career Assistant</Link></li>
-                </ul>
+                <div className="space-y-2">
+                  <Link to="/interviews" className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-accent transition-colors group">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Calendar className="h-4 w-4 text-primary" /> Lịch phỏng vấn
+                    </div>
+                    <span className="text-xs text-muted-foreground group-hover:text-primary">→</span>
+                  </Link>
+                  <Link to="/cv-review" className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-accent transition-colors group">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Sparkles className="h-4 w-4 text-primary" /> AI Review CV
+                      {user.plan === "free" && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 rounded">Pro</span>}
+                    </div>
+                    <span className="text-xs text-muted-foreground group-hover:text-primary">→</span>
+                  </Link>
+                  <Link to="/jobs" className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-accent transition-colors group">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Briefcase className="h-4 w-4 text-primary" /> Tìm việc trong 2km
+                    </div>
+                    <span className="text-xs text-muted-foreground group-hover:text-primary">→</span>
+                  </Link>
+                  <Link to="/chatbot" className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-accent transition-colors group">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Bot className="h-4 w-4 text-primary" /> AI Career Assistant
+                    </div>
+                    <span className="text-xs text-muted-foreground group-hover:text-primary">→</span>
+                  </Link>
+                </div>
               )}
             </CardContent>
           </Card>
